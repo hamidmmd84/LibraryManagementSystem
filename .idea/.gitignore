@@ -1,0 +1,32 @@
+# Java compiled files
+*.class
+
+# Build outputs
+out/
+target/
+build/
+dist/
+.gradle/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# User-specific IntelliJ files
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/shelf/
+
+# Private NetBeans project settings
+nbproject/private/# Default ignored files
+/shelf/
+/workspace.xml
