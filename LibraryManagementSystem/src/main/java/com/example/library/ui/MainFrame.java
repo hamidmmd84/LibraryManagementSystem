@@ -18,7 +18,7 @@ import java.util.Locale;
 public class MainFrame extends JFrame {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
-    private final LibraryService service = new LibraryService();
+    private final LibraryService service;
     private final JLabel statisticsLabel = new JLabel();
 
     // Books tab
@@ -48,8 +48,9 @@ public class MainFrame extends JFrame {
     private final JComboBox<Member> memberComboBox = new JComboBox<>();
     private int selectedLoanId = -1;
 
-    public MainFrame() {
+    public MainFrame(LibraryService service) {
         super("سیستم مدیریت کتابخانه");
+        this.service = service;
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1080, 700);
         setMinimumSize(new Dimension(900, 600));

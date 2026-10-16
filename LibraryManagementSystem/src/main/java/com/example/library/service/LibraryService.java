@@ -1,44 +1,42 @@
 package com.example.library.service;
 
+import com.example.library.db.Database;
 import com.example.library.model.Book;
 import com.example.library.model.Loan;
 import com.example.library.model.Member;
+import com.example.library.repository.BookRepository;
+import com.example.library.repository.LoanRepository;
+import com.example.library.repository.MemberRepository;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Holds the library's business rules. Data is intentionally kept in memory in this starter version;
- * a repository/database layer can be added later without putting business logic in the UI.
+ * Holds the library's business rules. All reads and writes go to SQLite through the repository
+ * layer; borrow and return run inside a database transaction so the loan record and the book's
+ * copy counts can never become inconsistent.
  */
 public class LibraryService {
-    private final List<Book> books = new ArrayList<>();
-    private final List<Member> members = new ArrayList<>();
-    private final List<Loan> loans = new ArrayList<>();
+    private final BookRepository bookRepository;
+    private final MemberRepository memberRepository;
+    private final LoanRepository loanRepository;
+    private final Database database;
 
-    private int nextBookId = 1;
-    private int nextMemberId = 1;
-    private int nextLoanId = 1;
-
-    public List<Book> getBooks() { return new ArrayList<>(books); }
-    public List<Member> getMembers() { return new ArrayList<>(members); }
-    public List<Loan> getLoans() { return new ArrayList<>(loans); }
-
-    public Book findBookById(int id) {
-        for (Book book : books) if (book.getId() == id) return book;
-        return null;
+    public LibraryService(BookRepository bookRepository, MemberRepository memberRepository,
+                          LoanRepository loanRepository, Database database) {
+        this.bookRepository = bookRepository;
+        this.memberRepository = memberRepository;
+        this.loanRepository = loanRepository;
+        this.database = database;
     }
 
-    public Member findMemberById(int id) {
-        for (Member member : members) if (member.getId() == id) return member;
-        return null;
-    }
+    public List<Book> getBooks() { return bookRepository.findAll(); }
+    public List<Member> getMembers() { return memberRepository.findAll(); }
+    public List<Loan> getLoans() { return loanRepository.findAll(); }
 
-    public Loan findLoanById(int id) {
-        for (Loan loan : loans) if (loan.getId() == id) return loan;
-        return null;
-    }
+    public Book findBookById(int id) { return bookRepository.findById(id); }
+    public Member findMemberById(int id) { return memberRepository.findById(id); }
+    public Loan findLoanById(int id) { return loanRepository.findById(id); }
 
     public Book addBook(String title, String author, String isbn, int totalCopies) {
         title = required(title, "عنوان کتاب");
@@ -47,9 +45,8 @@ public class LibraryService {
         if (totalCopies < 1) throw new IllegalArgumentException("تعداد نسخه باید حداقل ۱ باشد.");
         ensureUniqueIsbn(isbn, -1);
 
-        Book book = new Book(nextBookId++, title, author, isbn, totalCopies);
-        books.add(book);
-        return book;
+        int id = bookRepository.insert(title, author, isbn, totalCopies, totalCopies);
+        return new Book(id, title, author, isbn, totalCopies);
     }
 
     public void updateBook(int id, String title, String author, String isbn, int totalCopies) {
@@ -65,21 +62,17 @@ public class LibraryService {
             throw new IllegalArgumentException("تعداد نسخه نمی‌تواند از تعداد نسخه‌های امانت‌داده‌شده کمتر باشد: " + borrowedCopies);
         }
 
-        book.setTitle(title);
-        book.setAuthor(author);
-        book.setIsbn(isbn);
-        book.setTotalCopies(totalCopies);
-        book.setAvailableCopies(totalCopies - borrowedCopies);
+        if (!bookRepository.update(id, title, author, isbn, totalCopies, totalCopies - borrowedCopies)) {
+            throw new IllegalArgumentException("کتاب موردنظر پیدا نشد.");
+        }
     }
 
     public void deleteBook(int id) {
-        Book book = requireBook(id);
-        for (Loan loan : loans) {
-            if (loan.getBookId() == id) {
-                throw new IllegalArgumentException("این کتاب سابقه امانت دارد و برای حفظ سوابق قابل حذف نیست.");
-            }
+        requireBook(id);
+        if (loanRepository.existsByBookId(id)) {
+            throw new IllegalArgumentException("این کتاب سابقه امانت دارد و برای حفظ سوابق قابل حذف نیست.");
         }
-        books.remove(book);
+        bookRepository.deleteById(id);
     }
 
     public Member addMember(String fullName, String studentNumber, String phone) {
@@ -88,31 +81,28 @@ public class LibraryService {
         phone = phone == null ? "" : phone.trim();
         ensureUniqueStudentNumber(studentNumber, -1);
 
-        Member member = new Member(nextMemberId++, fullName, studentNumber, phone);
-        members.add(member);
-        return member;
+        int id = memberRepository.insert(fullName, studentNumber, phone);
+        return new Member(id, fullName, studentNumber, phone);
     }
 
     public void updateMember(int id, String fullName, String studentNumber, String phone) {
-        Member member = requireMember(id);
+        requireMember(id);
         fullName = required(fullName, "نام و نام خانوادگی");
         studentNumber = required(studentNumber, "شماره دانشجویی");
         phone = phone == null ? "" : phone.trim();
         ensureUniqueStudentNumber(studentNumber, id);
 
-        member.setFullName(fullName);
-        member.setStudentNumber(studentNumber);
-        member.setPhone(phone);
+        if (!memberRepository.update(id, fullName, studentNumber, phone)) {
+            throw new IllegalArgumentException("عضو موردنظر پیدا نشد.");
+        }
     }
 
     public void deleteMember(int id) {
-        Member member = requireMember(id);
-        for (Loan loan : loans) {
-            if (loan.getMemberId() == id) {
-                throw new IllegalArgumentException("این عضو سابقه امانت دارد و برای حفظ سوابق قابل حذف نیست.");
-            }
+        requireMember(id);
+        if (loanRepository.existsByMemberId(id)) {
+            throw new IllegalArgumentException("این عضو سابقه امانت دارد و برای حفظ سوابق قابل حذف نیست.");
         }
-        members.remove(member);
+        memberRepository.deleteById(id);
     }
 
     public Loan borrowBook(int bookId, int memberId, LocalDate dueDate) {
@@ -125,51 +115,49 @@ public class LibraryService {
             throw new IllegalArgumentException("تاریخ سررسید نمی‌تواند قبل از امروز باشد.");
         }
 
-        Loan loan = new Loan(nextLoanId++, bookId, memberId, LocalDate.now(), dueDate);
-        loans.add(loan);
-        book.setAvailableCopies(book.getAvailableCopies() - 1);
-        return loan;
+        LocalDate today = LocalDate.now();
+        return database.inTransaction(() -> {
+            // The guarded update keeps the copy count safe; zero rows means no copy was available.
+            int updatedRows = bookRepository.decrementAvailableCopies(bookId);
+            if (updatedRows == 0) {
+                throw new IllegalArgumentException("نسخه‌ای از این کتاب برای امانت موجود نیست.");
+            }
+            int loanId = loanRepository.insert(bookId, memberId, today, dueDate);
+            return new Loan(loanId, bookId, memberId, today, dueDate);
+        });
     }
 
     public void returnBook(int loanId) {
         Loan loan = findLoanById(loanId);
         if (loan == null) throw new IllegalArgumentException("رکورد امانت پیدا نشد.");
         if (loan.isReturned()) throw new IllegalArgumentException("این کتاب قبلاً بازگردانده شده است.");
+        if (findBookById(loan.getBookId()) == null) {
+            throw new IllegalStateException("کتاب مرتبط با این امانت پیدا نشد.");
+        }
 
-        Book book = findBookById(loan.getBookId());
-        if (book == null) throw new IllegalStateException("کتاب مرتبط با این امانت پیدا نشد.");
-        loan.markReturned(LocalDate.now());
-        book.setAvailableCopies(Math.min(book.getTotalCopies(), book.getAvailableCopies() + 1));
+        LocalDate today = LocalDate.now();
+        database.inTransaction(() -> {
+            boolean marked = loanRepository.markReturned(loanId, today);
+            if (!marked) {
+                throw new IllegalArgumentException("این کتاب قبلاً بازگردانده شده است.");
+            }
+            bookRepository.incrementAvailableCopies(loan.getBookId());
+        });
     }
 
-    public int getTotalCopiesCount() {
-        int total = 0;
-        for (Book book : books) total += book.getTotalCopies();
-        return total;
-    }
-
-    public int getAvailableCopiesCount() {
-        int total = 0;
-        for (Book book : books) total += book.getAvailableCopies();
-        return total;
-    }
-
-    public long getActiveLoanCount() {
-        return loans.stream().filter(loan -> !loan.isReturned()).count();
-    }
-
-    public long getOverdueLoanCount() {
-        return loans.stream().filter(loan -> !loan.isReturned() && loan.getOverdueDays() > 0).count();
-    }
+    public int getTotalCopiesCount() { return bookRepository.sumTotalCopies(); }
+    public int getAvailableCopiesCount() { return bookRepository.sumAvailableCopies(); }
+    public long getActiveLoanCount() { return loanRepository.countActive(); }
+    public long getOverdueLoanCount() { return loanRepository.countOverdue(LocalDate.now()); }
 
     private Book requireBook(int id) {
-        Book book = findBookById(id);
+        Book book = bookRepository.findById(id);
         if (book == null) throw new IllegalArgumentException("کتاب موردنظر پیدا نشد.");
         return book;
     }
 
     private Member requireMember(int id) {
-        Member member = findMemberById(id);
+        Member member = memberRepository.findById(id);
         if (member == null) throw new IllegalArgumentException("عضو موردنظر پیدا نشد.");
         return member;
     }
@@ -182,18 +170,14 @@ public class LibraryService {
     }
 
     private void ensureUniqueIsbn(String isbn, int currentId) {
-        for (Book book : books) {
-            if (book.getId() != currentId && book.getIsbn().equalsIgnoreCase(isbn)) {
-                throw new IllegalArgumentException("این شابک قبلاً برای کتاب دیگری ثبت شده است.");
-            }
+        if (bookRepository.existsByIsbn(isbn, currentId)) {
+            throw new IllegalArgumentException("این شابک قبلاً برای کتاب دیگری ثبت شده است.");
         }
     }
 
     private void ensureUniqueStudentNumber(String studentNumber, int currentId) {
-        for (Member member : members) {
-            if (member.getId() != currentId && member.getStudentNumber().equalsIgnoreCase(studentNumber)) {
-                throw new IllegalArgumentException("این شماره دانشجویی قبلاً ثبت شده است.");
-            }
+        if (memberRepository.existsByStudentNumber(studentNumber, currentId)) {
+            throw new IllegalArgumentException("این شماره دانشجویی قبلاً ثبت شده است.");
         }
     }
 }

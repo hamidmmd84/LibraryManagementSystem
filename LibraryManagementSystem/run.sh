@@ -2,5 +2,6 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p out
-find src/main/java -name '*.java' -print0 | xargs -0 javac -encoding UTF-8 -d out
-java -cp out com.example.library.Main
+ls lib/sqlite-jdbc-*.jar >/dev/null 2>&1 || { echo "SQLite JDBC driver not found in lib/. See README.md."; exit 1; }
+find src/main/java -name '*.java' -print0 | xargs -0 javac -encoding UTF-8 -cp "lib/*" -d out
+java -cp "out:lib/*" com.example.library.Main "$@"
