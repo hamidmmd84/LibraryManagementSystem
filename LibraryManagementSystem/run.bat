@@ -8,8 +8,15 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+if not exist "lib\sqlite-jdbc-*.jar" (
+  echo SQLite JDBC driver not found in the lib folder. See README.md for download instructions.
+  pause
+  exit /b 1
+)
 echo Compiling project...
-javac -encoding UTF-8 -d out src\main\java\com\example\library\Main.java src\main\java\com\example\library\model\Book.java src\main\java\com\example\library\model\Member.java src\main\java\com\example\library\model\Loan.java src\main\java\com\example\library\service\LibraryService.java src\main\java\com\example\library\ui\MainFrame.java
+dir /s /b src\main\java\*.java > out\sources.txt
+javac -encoding UTF-8 -cp "lib\*" -d out @out\sources.txt
+del out\sources.txt >nul 2>nul
 if errorlevel 1 (
   echo.
   echo Compilation failed. Check the error messages above.
@@ -17,5 +24,5 @@ if errorlevel 1 (
   exit /b 1
 )
 echo Starting Library Management System...
-java -cp out com.example.library.Main
+java -cp "out;lib\*" com.example.library.Main %*
 endlocal
